@@ -1,6 +1,24 @@
 const $ = require('jquery');
 const seedrandom = require('seedrandom');
 
+// Resources
+// https://github.com/immutable-js/immutable-js/
+// https://ramdajs.com/docs/
+// https://rxjs.dev/guide/observable
+
+// Features wanted:
+// Trace logging of function calls and arguments (done)
+// Composition (done)
+// Readable code (todo)
+// Versioned code (todo)
+// Immutability (todo)
+// Time travel (todo)
+// Spreadsheet over code (todo)
+// localStorage persistence (todo)
+// Web worker support (todo)
+// Offscreen canvas support (todo)
+// NPM package (todo)
+
 const createConfig = () => {
   return {
     stack: [],
