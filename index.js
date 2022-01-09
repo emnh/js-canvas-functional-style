@@ -1,5 +1,7 @@
 const $ = require('jquery');
 const seedrandom = require('seedrandom');
+const { fromJS } = require('immutable');
+const { Observable } = require('rxjs');
 
 // Resources
 // https://github.com/immutable-js/immutable-js/
@@ -27,49 +29,99 @@ const createConfig = () => {
   };
 };
 
-const trace = (cfg, f, ...args) => {
-  console.log(cfg.stack.join('/'), f.name, ...args);
-  return f(
-    Object.assign({}, cfg, { stack: cfg.stack.concat(f.name) }),
-    ...args
+let state = fromJS({
+  functions: {},
+  config: {},
+  data: {},
+  version: 0,
+});
+
+const reg = (state, fundict) => {
+  return (
+    state
+      .mergeDeep({ functions: fundict })
+      // .setIn(['functions', name], body)
+      .updateIn(['version'], (x) => x + 1)
   );
 };
 
-const compose = (cfg, f, g, ...args) =>
-  trace(cfg, g, trace(cfg, f, ...args), ...args);
+const resolve = (state, name) => state.getIn(['functions', name]);
+// return new Promise((resolve, reject) => {
+//   resolve(state.getIn(['functions', name]));
+// });
 
-const identity = (x) => x;
+state = reg(state, { identity: (state, x) => x });
+state = reg(state, {
+  trace: (state, f) => {
+    console.log(f.name);
+    return f();
+  },
+});
+state = reg(state, {
+  trace: (state, f, ...args) => {
+    console.log(f.name, ...args);
+    return f(state, ...args);
+  },
+  compose: (state, f, g) =>
+    resolve(state, 'trace')(state, g, resolve(state, 'trace')(state, f)),
+});
+state = reg(state, {
+  add: (state, a, b) => a + b,
+  inc: (state, a) => a + 1,
+  // });
+  // state = reg(state, {
+  addInc: (state, a, b) =>
+    resolve(state, 'compose')(
+      state,
+      (state) => resolve(state, 'trace')(state, resolve(state, 'add'), a, b),
+      resolve(state, 'inc')
+    ),
+});
+console.log(state.toJS());
+console.log('NUMBER', resolve(state, 'addInc')(state, 2, 3));
 
-const once = (cfg, f, ...args) =>
-  (() => {
-    if (f.result === undefined) {
-      f.result = f(cfg, ...args);
-    }
-    return f.result;
-  })();
+// const trace = (cfg, f, ...args) => {
+//   console.log(cfg.stack.join('/'), f.name, ...args);
+//   return f(
+//     Object.assign({}, cfg, { stack: cfg.stack.concat(f.name) }),
+//     ...args
+//   );
+// };
+// const compose = (cfg, f, g, ...args) =>
+//   trace(cfg, g, trace(cfg, f, ...args), ...args);
 
-const composeList = (cfg, f, gs, ...args) => {
-  gs.map((g) =>
-    compose(cfg, (cfg) => trace(cfg, once, f, ...args), g, ...args)
-  );
-};
+// const identity = (x) => x;
 
-const seed = (cfg) => seedrandom('hello.', { global: true });
+// const once = (cfg, f, ...args) =>
+//   (() => {
+//     if (f.result === undefined) {
+//       f.result = f(cfg, ...args);
+//     }
+//     return f.result;
+//   })();
 
-const createCanvas = (cfg) => document.createElement('canvas');
+// const composeList = (cfg, f, gs, ...args) => {
+//   gs.map((g) =>
+//     compose(cfg, (cfg) => trace(cfg, once, f, ...args), g, ...args)
+//   );
+// };
 
-const addCanvas = (cfg, canvas) => document.body.appendChild(canvas);
+// const seed = (cfg) => seedrandom('hello.', { global: true });
 
-const setWidth = (cfg, canvas) => (canvas.width = cfg.width);
+// const createCanvas = (cfg) => document.createElement('canvas');
 
-const setHeight = (cfg, canvas) => (canvas.height = cfg.height);
+// const addCanvas = (cfg, canvas) => document.body.appendChild(canvas);
 
-const setColor = (cfg, canvas) => (canvas.style = 'background: red;');
+// const setWidth = (cfg, canvas) => (canvas.width = cfg.width);
 
-const canvasOps = [addCanvas, setWidth, setHeight, setColor];
+// const setHeight = (cfg, canvas) => (canvas.height = cfg.height);
 
-const sizedCanvas = (cfg) => composeList(cfg, createCanvas, canvasOps);
+// const setColor = (cfg, canvas) => (canvas.style = 'background: red;');
 
-const main = composeList(createConfig(), identity, [seed, sizedCanvas]);
+// const canvasOps = [addCanvas, setWidth, setHeight, setColor];
 
-$(main);
+// const sizedCanvas = (cfg) => composeList(cfg, createCanvas, canvasOps);
+
+// const main = composeList(createConfig(), identity, [seed, sizedCanvas]);
+
+// $(main);
