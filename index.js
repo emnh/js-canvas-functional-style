@@ -1,7 +1,7 @@
 const $ = require('jquery');
 const seedrandom = require('seedrandom');
 const { fromJS } = require('immutable');
-const { Observable } = require('rxjs');
+const { Observable, Subject } = require('rxjs');
 
 // Resources
 // https://github.com/immutable-js/immutable-js/
@@ -21,64 +21,113 @@ const { Observable } = require('rxjs');
 // Offscreen canvas support (todo)
 // NPM package (todo)
 
-const createConfig = () => {
-  return {
-    stack: [],
-    width: 600,
-    height: 600,
-  };
-};
+// const createConfig = () => {
+//   return {
+//     stack: [],
+//     width: 600,
+//     height: 600,
+//   };
+// };
 
-let state = fromJS({
-  functions: {},
-  config: {},
-  data: {},
-  version: 0,
-});
-
-const reg = (state, fundict) => {
-  return (
-    state
-      .mergeDeep({ functions: fundict })
-      // .setIn(['functions', name], body)
-      .updateIn(['version'], (x) => x + 1)
-  );
-};
-
-const resolve = (state, name) => state.getIn(['functions', name]);
-// return new Promise((resolve, reject) => {
-//   resolve(state.getIn(['functions', name]));
+// const stateObservable = new Observable((subscriber) => {
+//   subscriber.next(1);
+//   subscriber.next(2);
+//   subscriber.next(3);
+//   setTimeout(() => {
+//     subscriber.next(4);
+//     subscriber.complete();
+//   }, 1000);
 // });
+function isFunction(functionToCheck) {
+  return (
+    functionToCheck && {}.toString.call(functionToCheck) === '[object Function]'
+  );
+}
 
-state = reg(state, { identity: (state, x) => x });
-state = reg(state, {
-  trace: (state, f) => {
-    console.log(f.name);
-    return f();
-  },
+const Program = function () {
+  const stateSubject = new Subject();
+
+  const program = this;
+
+  this.history = [];
+
+  this.state = fromJS({
+    functions: {},
+    config: {},
+    data: {},
+    version: 0,
+  });
+  this.history.push(this.state);
+
+  stateSubject.subscribe({
+    next(fundict) {
+      program.state = program.state
+        .mergeDeep({ functions: fundict })
+        .updateIn(['version'], (x) => x + 1);
+      program.history.push(program.state);
+      console.log('state updated:', program.state.toJS());
+    },
+    error(err) {
+      console.error('something wrong occurred: ' + err);
+    },
+    complete() {
+      console.log('done');
+    },
+  });
+
+  const reg = (fundict) => {
+    stateSubject.next(fundict);
+  };
+
+  const resolve = (name) => {
+    const ret = this.state.getIn(['functions', name]);
+    if (!isFunction(ret)) {
+      throw 'No such function: ' + name;
+    }
+    return ret;
+  };
+  reg({
+    identity: (x) => x,
+    trace: (f, ...args) => {
+      console.log('TRACE', f.name || f, ...args);
+      return f(...args);
+    },
+    compose: (f, g) => resolve('trace')(g, resolve('trace')(f)),
+  });
+
+  this.reg = reg;
+
+  const handler = {
+    get: function (target, prop, receiver) {
+      if (target.hasOwnProperty(prop)) {
+        return target[prop];
+      }
+      const resolved = resolve(prop);
+      //console.log('RESOLVED', resolved);
+      if (resolved !== undefined) {
+        if (!isFunction(resolved)) {
+          throw 'Not a function: ' + prop;
+        }
+        return (...args) => resolve('trace')(resolved, ...args);
+      }
+      throw 'No such property: ' + prop + ': ' + receiver;
+    },
+  };
+
+  const proxy = new Proxy(this, handler);
+
+  return proxy;
+};
+
+const p = new Program();
+
+p.reg({
+  add: (a, b) => a + b,
+  inc: (a) => a + 1,
+  addInc: (a, b) => p.compose(() => p.add(a, b), p.inc),
 });
-state = reg(state, {
-  trace: (state, f, ...args) => {
-    console.log(f.name, ...args);
-    return f(state, ...args);
-  },
-  compose: (state, f, g) =>
-    resolve(state, 'trace')(state, g, resolve(state, 'trace')(state, f)),
-});
-state = reg(state, {
-  add: (state, a, b) => a + b,
-  inc: (state, a) => a + 1,
-  // });
-  // state = reg(state, {
-  addInc: (state, a, b) =>
-    resolve(state, 'compose')(
-      state,
-      (state) => resolve(state, 'trace')(state, resolve(state, 'add'), a, b),
-      resolve(state, 'inc')
-    ),
-});
-console.log(state.toJS());
-console.log('NUMBER', resolve(state, 'addInc')(state, 2, 3));
+console.log('NUMBER', p.addInc(2, 3));
+// console.log('NUMBER', resolve('call')('addInc', 2, 3));
 
 // const trace = (cfg, f, ...args) => {
 //   console.log(cfg.stack.join('/'), f.name, ...args);
