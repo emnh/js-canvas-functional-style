@@ -1,0 +1,9 @@
+{
+  "name": "js",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "jquery": "^3.6.0",
+    "seedrandom": "^3.0.5"
+  }
+}
