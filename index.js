@@ -3,30 +3,42 @@ const seedrandom = require('seedrandom');
 
 const createConfig = () => {
   return {
+    stack: [],
     width: 600,
     height: 600,
   };
 };
 
-const compose = (cfg, f, g) => g(cfg, f(cfg));
+const trace = (cfg, f, ...args) => {
+  console.log(cfg.stack.join('/'), f.name, ...args);
+  return f(
+    Object.assign({}, cfg, { stack: cfg.stack.concat(f.name) }),
+    ...args
+  );
+};
 
-const flist = (cfg, x) => x.map((f) => f(cfg));
+const compose = (cfg, f, g, ...args) =>
+  trace(cfg, g, trace(cfg, f, ...args), ...args);
 
-const composeList = (cfg, f, gs) => gs.map((g) => compose(cfg, f, g));
+const identity = (x) => x;
 
-const once = (cfg, f) =>
+const once = (cfg, f, ...args) =>
   (() => {
     if (f.result === undefined) {
-      f.result = f(cfg);
+      f.result = f(cfg, ...args);
     }
     return f.result;
   })();
 
+const composeList = (cfg, f, gs, ...args) => {
+  gs.map((g) =>
+    compose(cfg, (cfg) => trace(cfg, once, f, ...args), g, ...args)
+  );
+};
+
 const seed = (cfg) => seedrandom('hello.', { global: true });
 
 const createCanvas = (cfg) => document.createElement('canvas');
-
-const createCanvasOnce = (cfg) => compose(cfg, () => createCanvas, once);
 
 const addCanvas = (cfg, canvas) => document.body.appendChild(canvas);
 
@@ -38,8 +50,8 @@ const setColor = (cfg, canvas) => (canvas.style = 'background: red;');
 
 const canvasOps = [addCanvas, setWidth, setHeight, setColor];
 
-const sizedCanvas = (cfg) => composeList(cfg, createCanvasOnce, canvasOps);
+const sizedCanvas = (cfg) => composeList(cfg, createCanvas, canvasOps);
 
-const main = composeList(createConfig(), (cfg) => null, [seed, sizedCanvas]);
+const main = composeList(createConfig(), identity, [seed, sizedCanvas]);
 
 $(main);
