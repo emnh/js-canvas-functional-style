@@ -110,12 +110,13 @@ const Program = function () {
   reg({
     identity: (x) => x,
     trace: (f, ...args) => {
+      const ret = f(...args);
       traceSubject.next({
         f,
         args: R.map((f) => (isFunction(f) ? f.name : f), args),
+        ret,
       });
-      // }
-      return f(...args);
+      return ret;
     },
     compose: (f, g) =>
       Object.defineProperty((...args) => g(f(...args)), 'name', {
@@ -185,13 +186,13 @@ p.stateChangeSubject.subscribe({
 
     // console.log(s);
     const stateChange = $(
-      '<div style="float: left; width: 200px; padding: 1em; border: 1px solid black; background: lightblue;"><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">State change:</div><div class="stateChange">' +
+      '<div style="float: left; width: 40%; padding: 1em; border: 1px solid black; background: lightblue;"><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">State change:</div><div class="stateChange">' +
         s +
         '</div></div>'
     );
     traceContainer = $('<div class="trace"></div>');
     const traceDiv = $(
-      '<div style="float: left; width: 200px; padding: 1em; border: 1px solid black; background: pink;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Trace</div></div>'
+      '<div style="float: left; width: 40%; padding: 1em; border: 1px solid black; background: pink;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Trace</div></div>'
     );
     const line = $(
       "<div id='line' style='float: left; margin-bottom: 1em;'></div>"
@@ -208,9 +209,9 @@ p.reg({
   addInc: (...args) => p.compose(p.add, p.inc)(...args),
 });
 p.traceSubject.subscribe({
-  next({ f, args }) {
+  next({ f, args, ret }) {
     traceContainer.append(
-      '<div>' + (f.name || f) + '(' + args.join(', ') + ')</div>'
+      '<div>' + (f.name || f) + '(' + args.join(', ') + ') → ' + ret + '</div>'
     );
     console.log('TRACE', f.name || f, ...args);
   },
@@ -218,7 +219,7 @@ p.traceSubject.subscribe({
 console.log('NUMBER', p.addInc(2, 3));
 p.reg({ inc: (a) => a + 2 });
 console.log('NUMBER', p.addInc(2, 3));
-p.reg({ faculty: (n) => (n > 1 ? p.faculty(n - 1) : 1) });
+p.reg({ faculty: (n) => (n > 1 ? n * p.faculty(n - 1) : 1) });
 console.log('NUMBER', p.faculty(5));
 
 // console.log('NUMBER', resolve('call')('addInc', 2, 3));
