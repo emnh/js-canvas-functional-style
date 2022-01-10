@@ -53,6 +53,7 @@ const Program = function () {
   const stateChangeSubject = new Subject();
   const stateSubject = new Subject();
   const traceSubject = new Subject();
+  const configSubject = new Subject();
 
   this.history = [];
 
@@ -123,6 +124,19 @@ const Program = function () {
         value: 'compose',
         writable: false,
       }),
+    configure: (obj) => {
+      configSubject.next(obj);
+      return obj;
+    },
+    withConfig: (name, fn) => {
+      configSubject.subscribe({
+        next(value) {
+          if (name in value) {
+            fn(program.state.config);
+          }
+        },
+      });
+    },
   });
 
   this.reg = reg;
@@ -160,112 +174,119 @@ const Program = function () {
   return proxy;
 };
 
-const container = $('body');
-let traceContainer = container;
-const p = new Program();
+const main = function () {
+  const container = $('body');
+  let traceContainer = container;
+  let output = container;
+  const p = new Program();
 
-p.stateSubject.subscribe({
-  next(state) {
-    console.log('state updated:', state.toJS());
-  },
-});
-p.stateChangeSubject.subscribe({
-  next(fundict) {
-    const s = Object.keys(fundict)
-      .map(
-        (f) =>
-          hljs.highlight(
-            'function ' + fundict[f].name + ': ' + fundict[f].toString(),
-            {
-              language: 'javascript',
-            }
-          ).value,
-        fundict
-      )
-      .join('<br />');
+  p.stateSubject.subscribe({
+    next(state) {
+      console.log('state updated:', state.toJS());
+    },
+  });
+  p.stateChangeSubject.subscribe({
+    next(fundict) {
+      const s = Object.keys(fundict)
+        .map(
+          (f) =>
+            hljs.highlight(
+              'function ' + fundict[f].name + ': ' + fundict[f].toString(),
+              {
+                language: 'javascript',
+              }
+            ).value,
+          fundict
+        )
+        .join('<br />');
 
-    // console.log(s);
-    const stateChange = $(
-      '<div style="float: left; width: 40%; padding: 1em; border: 1px solid black; background: lightblue;"><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">State change:</div><div class="stateChange">' +
-        s +
-        '</div></div>'
-    );
-    traceContainer = $('<div class="trace"></div>');
-    const traceDiv = $(
-      '<div style="float: left; width: 40%; padding: 1em; border: 1px solid black; background: pink;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Trace</div></div>'
-    );
-    const line = $(
-      "<div id='line' style='float: left; margin-bottom: 1em;'></div>"
-    );
-    container.append(line);
-    traceDiv.append(traceContainer);
-    line.append(stateChange);
-    line.append(traceDiv);
-  },
-});
-p.reg({
-  add: (a, b) => a + b,
-  inc: (a) => a + 1,
-  addInc: (...args) => p.compose(p.add, p.inc)(...args),
-});
-p.traceSubject.subscribe({
-  next({ f, args, ret }) {
-    traceContainer.append(
-      '<div>' + (f.name || f) + '(' + args.join(', ') + ') → ' + ret + '</div>'
-    );
-    console.log('TRACE', f.name || f, ...args);
-  },
-});
-console.log('NUMBER', p.addInc(2, 3));
-p.reg({ inc: (a) => a + 2 });
-console.log('NUMBER', p.addInc(2, 3));
-p.reg({ faculty: (n) => (n > 1 ? n * p.faculty(n - 1) : 1) });
-console.log('NUMBER', p.faculty(5));
+      // console.log(s);
+      const stateChange = $(
+        '<div style="float: left; min-width: 30%; padding: 1em; border: 1px solid black; background: lightblue;"><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">State change:</div><div class="stateChange">' +
+          s +
+          '</div></div>'
+      );
+      traceContainer = $('<div class="trace"></div>');
+      const traceDiv = $(
+        '<div style="float: left; min-width: 30%; padding: 1em; border: 1px solid black; background: pink;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Trace</div></div>'
+      );
+      output = $('<div class="output"></div>');
+      const outDiv = $(
+        '<div style="float: left; min-width: 30%; padding: 1em; border: 1px solid black; background: lightgreen;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Output</div></div>'
+      );
+      const line = $(
+        "<div id='line' style='float: left; margin-bottom: 1em;'></div>"
+      );
+      container.append(line);
+      traceDiv.append(traceContainer);
+      outDiv.append(output);
+      line.append(stateChange);
+      line.append(traceDiv);
+      line.append(outDiv);
+    },
+  });
+  p.traceSubject.subscribe({
+    next({ f, args, ret }) {
+      traceContainer.append(
+        '<div>' +
+          (f.name || f) +
+          '(' +
+          args.join(', ') +
+          ') → ' +
+          ret +
+          '</div>'
+      );
+      console.log('TRACE', f.name || f, ...args, ret);
+    },
+  });
+  p.reg({
+    add: (a, b) => a + b,
+    inc: (a) => a + 1,
+    addInc: (...args) => p.compose(p.add, p.inc)(...args),
+  });
+  console.log('NUMBER', p.addInc(2, 3));
+  p.reg({
+    createConfig: () => {
+      c: 4;
+    },
+    add: (a, b) => p.withConfig('c', (config) => a + b + config.c),
+    inc: (a) => a + 1,
+    addInc: (...args) => p.compose(p.add, p.inc)(...args),
+  });
+  console.log('NUMBER', p.addInc(2, 3));
+  p.reg({ inc: (a) => a + 2 });
+  console.log('NUMBER', p.addInc(2, 3));
+  p.reg({ faculty: (n) => (n > 1 ? n * p.faculty(n - 1) : 1) });
+  console.log('NUMBER', p.faculty(5));
 
-// console.log('NUMBER', resolve('call')('addInc', 2, 3));
-
-// const trace = (cfg, f, ...args) => {
-//   console.log(cfg.stack.join('/'), f.name, ...args);
-//   return f(
-//     Object.assign({}, cfg, { stack: cfg.stack.concat(f.name) }),
-//     ...args
-//   );
-// };
-// const compose = (cfg, f, g, ...args) =>
-//   trace(cfg, g, trace(cfg, f, ...args), ...args);
-
-// const identity = (x) => x;
-
-// const once = (cfg, f, ...args) =>
-//   (() => {
-//     if (f.result === undefined) {
-//       f.result = f(cfg, ...args);
-//     }
-//     return f.result;
-//   })();
-
-// const composeList = (cfg, f, gs, ...args) => {
-//   gs.map((g) =>
-//     compose(cfg, (cfg) => trace(cfg, once, f, ...args), g, ...args)
-//   );
-// };
-
-// const seed = (cfg) => seedrandom('hello.', { global: true });
-
-// const createCanvas = (cfg) => document.createElement('canvas');
-
-// const addCanvas = (cfg, canvas) => document.body.appendChild(canvas);
-
-// const setWidth = (cfg, canvas) => (canvas.width = cfg.width);
-
-// const setHeight = (cfg, canvas) => (canvas.height = cfg.height);
-
-// const setColor = (cfg, canvas) => (canvas.style = 'background: red;');
-
-// const canvasOps = [addCanvas, setWidth, setHeight, setColor];
-
-// const sizedCanvas = (cfg) => composeList(cfg, createCanvas, canvasOps);
-
-// const main = composeList(createConfig(), identity, [seed, sizedCanvas]);
-
-// $(main);
+  p.reg({
+    createConfig: () => {
+      return p.configure({ width: 100, height: 100 });
+    },
+    seed: () => seedrandom('hello.', { global: true }),
+    createCanvas: () => document.createElement('canvas'),
+    addCanvas: (canvas) => output.append(canvas),
+    setWidth: (canvas) =>
+      p.withConfig('width', (config) => (canvas.width = config.width)),
+    setHeight: (canvas) =>
+      p.withConfig('height', (config) => (canvas.height = config.height)),
+    setColor: (canvas) => (canvas.style = 'background: red;'),
+    canvasOps: () => [p.addCanvas, p.setWidth, p.setHeight, p.setColor],
+    // TODO: remove args or extend to memoize
+    once: (f, ...args) =>
+      (() => {
+        if (f.result === undefined) {
+          f.result = f(...args);
+        }
+        return f.result;
+      })(),
+    composeList: (f, gs, ...args) => {
+      return gs.map((g) => p.compose(() => p.once(f, ...args), g, ...args));
+    },
+    sizedCanvas: () => p.composeList(p.createCanvas, p.canvasOps()),
+    main: () =>
+      p.composeList(p.createConfig, [p.seed, p.sizedCanvas]).map((f) => f()),
+  });
+  console.log('MAIN', p.main());
+};
+$(main);
