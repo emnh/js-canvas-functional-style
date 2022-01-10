@@ -3,6 +3,9 @@ const seedrandom = require('seedrandom');
 const { fromJS } = require('immutable');
 const { Observable, Subject } = require('rxjs');
 const R = require('ramda');
+// const hljs = require('highlight.js');
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github.css';
 
 // Resources
 // https://github.com/immutable-js/immutable-js/
@@ -47,6 +50,7 @@ function isFunction(functionToCheck) {
 
 const Program = function () {
   const program = this;
+  const stateChangeSubject = new Subject();
   const stateSubject = new Subject();
   const traceSubject = new Subject();
 
@@ -61,21 +65,28 @@ const Program = function () {
   this.history.push(this.state);
 
   const namedWrap = R.curry((g, f) =>
-    Object.defineProperty(g(f), 'name', {
-      value: f.name,
-      writable: false,
-    })
+    Object.defineProperty(
+      Object.defineProperty(g(f), 'name', {
+        value: f.name,
+        writable: false,
+      }),
+      'body',
+      {
+        value: f.toString(),
+        writable: false,
+      }
+    )
   );
 
   const namedCurry = namedWrap(R.curry);
 
-  stateSubject.subscribe({
+  stateChangeSubject.subscribe({
     next(fundict) {
       program.state = program.state
         .mergeDeep({ functions: R.map(namedCurry, fundict) })
         .updateIn(['version'], (x) => x + 1);
       program.history.push(program.state);
-      console.log('state updated:', program.state.toJS());
+      stateSubject.next(program.state);
     },
     error(err) {
       console.error('something wrong occurred: ' + err);
@@ -86,7 +97,7 @@ const Program = function () {
   });
 
   const reg = (fundict) => {
-    stateSubject.next(fundict);
+    stateChangeSubject.next(fundict);
   };
 
   const resolve = (name) => {
@@ -115,6 +126,7 @@ const Program = function () {
 
   this.reg = reg;
   this.stateSubject = stateSubject;
+  this.stateChangeSubject = stateChangeSubject;
   this.traceSubject = traceSubject;
 
   const handler = {
@@ -147,8 +159,49 @@ const Program = function () {
   return proxy;
 };
 
+const container = $('body');
+let traceContainer = container;
 const p = new Program();
 
+p.stateSubject.subscribe({
+  next(state) {
+    console.log('state updated:', state.toJS());
+  },
+});
+p.stateChangeSubject.subscribe({
+  next(fundict) {
+    const s = Object.keys(fundict)
+      .map(
+        (f) =>
+          hljs.highlight(
+            'function ' + fundict[f].name + ': ' + fundict[f].toString(),
+            {
+              language: 'javascript',
+            }
+          ).value,
+        fundict
+      )
+      .join('<br />');
+
+    // console.log(s);
+    const stateChange = $(
+      '<div style="float: left; width: 200px; padding: 1em; border: 1px solid black; background: lightblue;"><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">State change:</div><div class="stateChange">' +
+        s +
+        '</div></div>'
+    );
+    traceContainer = $('<div class="trace"></div>');
+    const traceDiv = $(
+      '<div style="float: left; width: 200px; padding: 1em; border: 1px solid black; background: pink;" ><div style="font-size: 20pt; padding-bottom: 10pt; margin-bottom: 10pt; text-decoration: underline; text-underline-offset: 5pt;">Trace</div></div>'
+    );
+    const line = $(
+      "<div id='line' style='float: left; margin-bottom: 1em;'></div>"
+    );
+    container.append(line);
+    traceDiv.append(traceContainer);
+    line.append(stateChange);
+    line.append(traceDiv);
+  },
+});
 p.reg({
   add: (a, b) => a + b,
   inc: (a) => a + 1,
@@ -156,10 +209,18 @@ p.reg({
 });
 p.traceSubject.subscribe({
   next({ f, args }) {
+    traceContainer.append(
+      '<div>' + (f.name || f) + ': ' + args.join(', ') + '</div>'
+    );
     console.log('TRACE', f.name || f, ...args);
   },
 });
 console.log('NUMBER', p.addInc(2, 3));
+p.reg({ inc: (a) => a + 2 });
+console.log('NUMBER', p.addInc(2, 3));
+p.reg({ faculty: (n) => (n > 1 ? p.faculty(n - 1) : 1) });
+console.log('NUMBER', p.faculty(5));
+
 // console.log('NUMBER', resolve('call')('addInc', 2, 3));
 
 // const trace = (cfg, f, ...args) => {
