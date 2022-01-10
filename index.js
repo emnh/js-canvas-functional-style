@@ -2,6 +2,7 @@ const $ = require('jquery');
 const seedrandom = require('seedrandom');
 const { fromJS } = require('immutable');
 const { Observable, Subject } = require('rxjs');
+const R = require('ramda');
 
 // Resources
 // https://github.com/immutable-js/immutable-js/
@@ -45,9 +46,9 @@ function isFunction(functionToCheck) {
 }
 
 const Program = function () {
-  const stateSubject = new Subject();
-
   const program = this;
+  const stateSubject = new Subject();
+  const traceSubject = new Subject();
 
   this.history = [];
 
@@ -59,10 +60,19 @@ const Program = function () {
   });
   this.history.push(this.state);
 
+  const namedWrap = R.curry((g, f) =>
+    Object.defineProperty(g(f), 'name', {
+      value: f.name,
+      writable: false,
+    })
+  );
+
+  const namedCurry = namedWrap(R.curry);
+
   stateSubject.subscribe({
     next(fundict) {
       program.state = program.state
-        .mergeDeep({ functions: fundict })
+        .mergeDeep({ functions: R.map(namedCurry, fundict) })
         .updateIn(['version'], (x) => x + 1);
       program.history.push(program.state);
       console.log('state updated:', program.state.toJS());
@@ -89,13 +99,23 @@ const Program = function () {
   reg({
     identity: (x) => x,
     trace: (f, ...args) => {
-      console.log('TRACE', f.name || f, ...args);
+      traceSubject.next({
+        f,
+        args: R.map((f) => (isFunction(f) ? f.name : f), args),
+      });
+      // }
       return f(...args);
     },
-    compose: (f, g) => resolve('trace')(g, resolve('trace')(f)),
+    compose: (f, g) =>
+      Object.defineProperty((...args) => g(f(...args)), 'name', {
+        value: 'compose',
+        writable: false,
+      }),
   });
 
   this.reg = reg;
+  this.stateSubject = stateSubject;
+  this.traceSubject = traceSubject;
 
   const handler = {
     get: function (target, prop, receiver) {
@@ -103,12 +123,20 @@ const Program = function () {
         return target[prop];
       }
       const resolved = resolve(prop);
-      //console.log('RESOLVED', resolved);
       if (resolved !== undefined) {
         if (!isFunction(resolved)) {
           throw 'Not a function: ' + prop;
         }
-        return (...args) => resolve('trace')(resolved, ...args);
+        return namedCurry(
+          Object.defineProperty(
+            (...args) => resolve('trace')(resolve(prop), ...args),
+            'name',
+            {
+              value: prop,
+              writable: false,
+            }
+          )
+        );
       }
       throw 'No such property: ' + prop + ': ' + receiver;
     },
@@ -124,7 +152,12 @@ const p = new Program();
 p.reg({
   add: (a, b) => a + b,
   inc: (a) => a + 1,
-  addInc: (a, b) => p.compose(() => p.add(a, b), p.inc),
+  addInc: (...args) => p.compose(p.add, p.inc)(...args),
+});
+p.traceSubject.subscribe({
+  next({ f, args }) {
+    console.log('TRACE', f.name || f, ...args);
+  },
 });
 console.log('NUMBER', p.addInc(2, 3));
 // console.log('NUMBER', resolve('call')('addInc', 2, 3));
