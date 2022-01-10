@@ -210,7 +210,7 @@ p.reg({
 p.traceSubject.subscribe({
   next({ f, args }) {
     traceContainer.append(
-      '<div>' + (f.name || f) + ': ' + args.join(', ') + '</div>'
+      '<div>' + (f.name || f) + '(' + args.join(', ') + ')</div>'
     );
     console.log('TRACE', f.name || f, ...args);
   },
