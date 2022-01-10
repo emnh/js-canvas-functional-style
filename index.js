@@ -43,8 +43,15 @@ import 'highlight.js/styles/github.css';
 //   }, 1000);
 // });
 function isFunction(functionToCheck) {
+  // console.log(functionToCheck, (
+  //   functionToCheck && {}.toString.call(functionToCheck) === '[object Function]',
+  //   functionToCheck.toString()
+  // ));
   return (
-    functionToCheck && {}.toString.call(functionToCheck) === '[object Function]'
+    functionToCheck &&
+    ({}.toString.call(functionToCheck) === '[object Function]' ||
+      (!functionToCheck.hasOwnProperty('prototype') &&
+        functionToCheck.toString().includes('=>')))
   );
 }
 
@@ -108,22 +115,48 @@ const Program = function () {
     }
     return ret;
   };
+
+  // const trampoline = (ret) => {
+  //   const ret2 = isFunction(ret)
+  //     ? ret
+  //     : function (state) {
+  //         return ret;
+  //       };
+  //   return Object.defineProperty(ret2, 'trampoline', {
+  //     value: 'true',
+  //     writable: false,
+  //   });
+  // };
+
+  // const resolveTrampoline = (f) => {
+  //   let ret = f;
+  //   while (isFunction(ret) && 'trampoline' in ret && ret.trampoline === true) {
+  //     console.log('trampoline', ret);
+  //     ret = ret(program.state);
+  //   }
+  //   console.log('RET', ret);
+  //   return ret;
+  // };
+
   reg({
-    identity: (x) => x,
+    // stateful: () => trampoline((state) => state.get('config')),
+    identity: (x) => trampoline(x),
     trace: (f, ...args) => {
-      const ret = f(...args);
+      const ret = resolveTrampoline(f(...args));
       traceSubject.next({
         f,
         args: R.map((f) => (isFunction(f) ? f.name : f), args),
         ret,
       });
-      return ret;
+      return trampoline(ret);
     },
     compose: (f, g) =>
-      Object.defineProperty((...args) => g(f(...args)), 'name', {
-        value: 'compose',
-        writable: false,
-      }),
+      trampoline(
+        Object.defineProperty((...args) => g(f(...args)), 'name', {
+          value: 'compose',
+          writable: false,
+        })
+      ),
     configure: (obj) => {
       configSubject.next(obj);
       return obj;
@@ -143,6 +176,7 @@ const Program = function () {
   this.stateSubject = stateSubject;
   this.stateChangeSubject = stateChangeSubject;
   this.traceSubject = traceSubject;
+  this.run = resolveTrampoline;
 
   const handler = {
     get: function (target, prop, receiver) {
@@ -244,7 +278,9 @@ const main = function () {
     inc: (a) => a + 1,
     addInc: (...args) => p.compose(p.add, p.inc)(...args),
   });
-  console.log('NUMBER', p.addInc(2, 3));
+  console.log('NUMBER', p.run(p.addInc(2, 3)));
+  return;
+
   p.reg({
     createConfig: () => {
       c: 4;
