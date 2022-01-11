@@ -65,6 +65,8 @@ const Program = function () {
   const traceSubject = new Subject();
   const configSubject = new Subject();
 
+  // TODO: History should be part of state,
+  // immutable and allow for branching.
   this.history = [];
 
   this.state = fromJS({
