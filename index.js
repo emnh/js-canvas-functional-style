@@ -16,14 +16,17 @@ import 'highlight.js/styles/github.css';
 // Trace logging of function calls and arguments (done)
 // Composition (done)
 // Readable code (todo)
-// Versioned code (todo)
-// Immutability (todo)
+// Versioned code (done)
+// Branching version tree (todo)
+// Immutability (mostly done)
 // Time travel (todo)
 // Spreadsheet over code (todo)
 // localStorage persistence (todo)
 // Web worker support (todo)
 // Offscreen canvas support (todo)
 // NPM package (todo)
+// Own syntax: Tiddelibom? (todo)
+// Reverse syntax highlighting, copying Javascript highlight back to code generation (todo)
 
 // const createConfig = () => {
 //   return {
