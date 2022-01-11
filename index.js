@@ -23,7 +23,7 @@ import 'highlight.js/styles/github.css';
 // Spreadsheet over code (todo)
 // localStorage persistence (todo)
 // Web worker support (todo)
-// Offscreen canvas support (todo)
+// Offscreen canvas support (todo): https://glitch.com/edit/#!/offscreencanvas-demo?path=index.html%3A1%3A0
 // NPM package (todo)
 // Own syntax: Tiddelibom? (todo)
 // Reverse syntax highlighting, copying Javascript highlight back to code generation (todo)
